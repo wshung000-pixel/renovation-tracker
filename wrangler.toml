@@ -4,4 +4,4 @@ pages_build_output_dir = "public"
 
 [[kv_namespaces]]
 binding = "RENOVATION_KV"
-id = "REPLACE_WITH_YOUR_KV_ID"
+id = "32f6cd0339704a72bfc3cdecb5dd9567"
