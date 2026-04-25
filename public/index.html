@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="裝潢費用" />
+  <meta name="theme-color" content="#1a1a2e" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <script>
+    const m={name:"新家裝潢費用紀錄",short_name:"裝潢費用",theme_color:"#1a1a2e",background_color:"#f4f5f9",display:"standalone",orientation:"portrait",start_url:"/",icons:[{src:"pwa-192.png",sizes:"192x192",type:"image/png"},{src:"pwa-512.png",sizes:"512x512",type:"image/png",purpose:"any maskable"}]};
+    const b=new Blob([JSON.stringify(m)],{type:'application/json'});
+    const l=document.createElement('link');l.rel='manifest';l.href=URL.createObjectURL(b);document.head.appendChild(l);
+  </script>
+  <title>新家裝潢費用紀錄</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    html,body,#root{height:100%;width:100%}
+    body{background:#f4f5f9;-webkit-font-smoothing:antialiased;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);font-family:'PingFang TC','Noto Sans TC',sans-serif}
+    input,select{font-size:16px!important}
+    .filter-row::-webkit-scrollbar{display:none}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .spin{animation:spin 0.7s linear infinite;display:inline-block}
+    .entry-row{transition:background 0.15s;touch-action:none}
+    .entry-row:active{background:#f0f4ff!important}
+    .dragging{opacity:0.5;background:#e8f0fe!important;border-radius:14px;}
+    .drag-over{border-top:2.5px solid #2563eb!important}
+    .sub-tab-btn{padding:5px 14px;border-radius:16px;border:none;cursor:pointer;font-size:12px;font-weight:600;transition:all 0.18s}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useMemo, useEffect, useRef } = React;
+
+const PAYMENT_METHODS = ["轉帳","國泰信用卡","分期","現金","其他"];
+const API = "/api/data";
+
+const initialData = [
+  {id:"1",item:"設計約",amount:120000,payment:"轉帳",date:"2026-02-09",notes:"",type:"裝潢",paid:true},
+  {id:"2",item:"驗屋",amount:14500,payment:"轉帳",date:"",notes:"初驗+複驗",type:"裝潢",paid:true},
+  {id:"3",item:"工程約",amount:0,payment:"",date:"",notes:"",type:"裝潢",paid:false},
+  {id:"4",item:"Soundbar",amount:26900,payment:"國泰信用卡",date:"2026-04-19",notes:"Sony A8000",type:"家電",paid:true},
+  {id:"5",item:"電視",amount:63000,payment:"國泰信用卡",date:"2026-04-18",notes:'SAMSUNG S95F 65"',type:"家電",paid:true},
+  {id:"6",item:"洗衣機",amount:66000,payment:"國泰信用卡",date:"2026-04-19",notes:"Panasonic NA-LX128EL",type:"家電",paid:true},
+  {id:"7",item:"沙發",amount:103050,payment:"分期",date:"2026-04-18",notes:"STIMLIG",type:"裝潢",paid:true},
+  {id:"8",item:"掃地機器人",amount:0,payment:"國泰信用卡",date:"2026-04-19",notes:"石頭 Saros 20，合併冰箱",type:"家電",paid:true},
+  {id:"9",item:"冰箱",amount:82400,payment:"國泰信用卡",date:"2026-04-19",notes:"Panasonic NR-E507XT-WI",type:"家電",paid:true},
+  {id:"10",item:"廚下淨水機",amount:0,payment:"",date:"",notes:"VOCA",type:"家電",paid:false},
+  {id:"11",item:"除濕機",amount:0,payment:"",date:"",notes:"",type:"家電",paid:false},
+  {id:"12",item:"冷氣",amount:0,payment:"",date:"",notes:"",type:"家電",paid:false},
+  {id:"13",item:"全室軟水",amount:0,payment:"",date:"",notes:"",type:"裝潢",paid:false},
+  {id:"14",item:"浴室鏡櫃",amount:0,payment:"",date:"",notes:"",type:"裝潢",paid:false},
+];
+
+const paymentColors = {
+  "轉帳":{bg:"#e8e2d8",text:"#7a6a52"},"國泰信用卡":{bg:"#f0e9c8",text:"#8a7020"},
+  "分期":{bg:"#fce8e8",text:"#c04040"},"現金":{bg:"#e2f0e8",text:"#3a7a52"},"其他":{bg:"#ece8f5",text:"#5a4a8a"},
+};
+
+function PaymentBadge({method}) {
+  if (!method) return null;
+  const c = paymentColors[method]||{bg:"#f0f0f0",text:"#666"};
+  return <span style={{background:c.bg,color:c.text,padding:"2px 9px",borderRadius:"6px",fontSize:"11px",fontWeight:600,whiteSpace:"nowrap"}}>{method}</span>;
+}
+
+function Modal({title,onClose,children}) {
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:"16px"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:"18px",width:"100%",maxWidth:480,boxShadow:"0 24px 60px rgba(0,0,0,0.18)",overflow:"hidden",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+        <div style={{padding:"20px 24px 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <h2 style={{margin:0,fontSize:18,fontWeight:700,color:"#1a1a2e"}}>{title}</h2>
+          <button onClick={onClose} style={{border:"none",background:"#f3f4f6",borderRadius:"50%",width:32,height:32,cursor:"pointer",fontSize:18,color:"#666",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+        <div style={{padding:"16px 24px 24px"}}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function EntryForm({initial, onSave, onCancel}) {
+  const empty={item:"",amount:"",payment:"",date:"",notes:"",type:"家電",paid:false};
+  const [form,setForm]=useState(initial||empty);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const inp={width:"100%",padding:"10px 12px",borderRadius:"10px",border:"1.5px solid #e5e7eb",fontSize:"16px",outline:"none",background:"#fafafa",boxSizing:"border-box",fontFamily:"inherit",height:"44px",WebkitAppearance:"none",appearance:"none"};
+  const lbl={fontSize:12,fontWeight:600,color:"#6b7280",marginBottom:6,display:"block",letterSpacing:"0.04em"};
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* 項目名稱 + 類型 */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>
+          <label style={lbl}>項目名稱 *</label>
+          <input style={inp} value={form.item} onChange={e=>set("item",e.target.value)} placeholder="例：冷氣"/>
+        </div>
+        <div>
+          <label style={lbl}>類型</label>
+          <select style={{...inp,paddingRight:32}} value={form.type} onChange={e=>set("type",e.target.value)}>
+            <option>裝潢</option>
+            <option>家電</option>
+          </select>
+        </div>
+      </div>
+      {/* 金額 + 付款方式 */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>
+          <label style={lbl}>已付金額 (NT$)</label>
+          <input style={inp} type="number" inputMode="numeric" value={form.amount} onChange={e=>set("amount",e.target.value)} placeholder="0"/>
+        </div>
+        <div>
+          <label style={lbl}>付款方式</label>
+          <select style={{...inp,paddingRight:32}} value={form.payment} onChange={e=>set("payment",e.target.value)}>
+            <option value="">—</option>
+            {PAYMENT_METHODS.map(m=><option key={m}>{m}</option>)}
+          </select>
+        </div>
+      </div>
+      {/* 日期 + 已付款 */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>
+          <label style={lbl}>日期</label>
+          <input style={inp} type="date" value={form.date} onChange={e=>set("date",e.target.value)}/>
+        </div>
+        <div>
+          <label style={lbl}>付款狀態</label>
+          <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"0 12px",borderRadius:"10px",border:"1.5px solid",borderColor:form.paid?"#93c5fd":"#e5e7eb",height:"44px",background:form.paid?"#eff6ff":"#fafafa",transition:"all 0.2s",boxSizing:"border-box"}}>
+            <input type="checkbox" checked={form.paid} onChange={e=>set("paid",e.target.checked)} style={{width:18,height:18,accentColor:"#2563eb",flexShrink:0}}/>
+            <span style={{fontSize:14,fontWeight:600,color:form.paid?"#2563eb":"#6b7280"}}>已付款</span>
+          </label>
+        </div>
+      </div>
+      {/* 備註 */}
+      <div>
+        <label style={lbl}>備註</label>
+        <input style={inp} value={form.notes} onChange={e=>set("notes",e.target.value)} placeholder="選填（廠牌型號等）"/>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:4}}>
+        <button onClick={onCancel} style={{flex:1,padding:"13px",borderRadius:"12px",border:"1.5px solid #e5e7eb",background:"#fff",fontSize:15,cursor:"pointer",fontWeight:600,color:"#374151"}}>取消</button>
+        <button onClick={()=>onSave(form)} style={{flex:2,padding:"13px",borderRadius:"12px",border:"none",background:"linear-gradient(135deg,#1a1a2e,#2563eb)",fontSize:15,cursor:"pointer",fontWeight:700,color:"#fff"}}>儲存</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Draggable list ────────────────────────────────────────────────
+function DraggableList({items, onReorder, onEdit}) {
+  const dragIndex = useRef(null);
+  const [dragOver, setDragOver] = useState(null);
+
+  // Touch drag state
+  const touchState = useRef({active:false, startIndex:null, currentIndex:null, startY:0});
+  const listRef = useRef(null);
+
+  function getRowEls() {
+    return listRef.current ? Array.from(listRef.current.querySelectorAll('[data-idx]')) : [];
+  }
+  function indexFromY(y) {
+    const rows = getRowEls();
+    for (let i = 0; i < rows.length; i++) {
+      const rect = rows[i].getBoundingClientRect();
+      if (y < rect.bottom) return i;
+    }
+    return rows.length - 1;
+  }
+
+  // Mouse drag
+  function onDragStart(i) { dragIndex.current = i; }
+  function onDragEnter(i) { setDragOver(i); }
+  function onDrop(i) {
+    if (dragIndex.current === null || dragIndex.current === i) { setDragOver(null); return; }
+    const arr = [...items];
+    const [moved] = arr.splice(dragIndex.current, 1);
+    arr.splice(i, 0, moved);
+    onReorder(arr);
+    dragIndex.current = null;
+    setDragOver(null);
+  }
+  function onDragEnd() { dragIndex.current = null; setDragOver(null); }
+
+  // Touch drag
+  function onTouchStart(e, i) {
+    const t = touchState.current;
+    t.timer = setTimeout(() => {
+      t.active = true;
+      t.startIndex = i;
+      t.currentIndex = i;
+      t.startY = e.touches[0].clientY;
+      setDragOver(i);
+    }, 350); // long press
+  }
+  function onTouchMove(e) {
+    const t = touchState.current;
+    if (!t.active) { clearTimeout(t.timer); return; }
+    e.preventDefault();
+    const y = e.touches[0].clientY;
+    const idx = indexFromY(y);
+    if (idx !== t.currentIndex) { t.currentIndex = idx; setDragOver(idx); }
+  }
+  function onTouchEnd() {
+    const t = touchState.current;
+    clearTimeout(t.timer);
+    if (!t.active) return;
+    const from = t.startIndex, to = t.currentIndex;
+    t.active = false; t.startIndex = null; t.currentIndex = null;
+    setDragOver(null);
+    if (from !== to && from !== null && to !== null) {
+      const arr = [...items];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      onReorder(arr);
+    }
+  }
+
+  const fmtMoney = n => n > 0 ? `$${Number(n).toLocaleString()}` : "—";
+  const fmtDate  = d => d ? d.replace(/-/g, "/") : "";
+
+  return (
+    <div ref={listRef}>
+      {items.map((entry, i) => (
+        <div
+          key={entry.id}
+          data-idx={i}
+          draggable
+          onDragStart={()=>onDragStart(i)}
+          onDragEnter={()=>onDragEnter(i)}
+          onDragOver={e=>e.preventDefault()}
+          onDrop={()=>onDrop(i)}
+          onDragEnd={onDragEnd}
+          onTouchStart={e=>onTouchStart(e,i)}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onClick={()=>onEdit(entry)}
+          className={"entry-row"+(dragOver===i?" drag-over":"")}
+          style={{padding:"13px 16px",cursor:"pointer",borderTop:"1px solid #f3f4f6",display:"flex",alignItems:"center",gap:12,background:"#fff",userSelect:"none"}}
+        >
+          {/* drag handle */}
+          <div style={{flexShrink:0,display:"flex",flexDirection:"column",gap:3,opacity:0.25,paddingRight:2}}>
+            {[0,1,2].map(n=><div key={n} style={{width:16,height:2,borderRadius:2,background:"#1a1a2e"}}/>)}
+          </div>
+
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+              <span style={{fontWeight:700,fontSize:15,color:"#1a1a2e"}}>{entry.item}</span>
+              {!entry.paid && <span style={{fontSize:10,background:"#fef3c7",color:"#d97706",padding:"1px 6px",borderRadius:4,fontWeight:600}}>未付款</span>}
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+              {entry.payment && <PaymentBadge method={entry.payment}/>}
+              {entry.date && <span style={{fontSize:11,color:"#9ca3af"}}>{fmtDate(entry.date)}</span>}
+              {entry.notes && <span style={{fontSize:11,color:"#c4b5a5",fontStyle:"italic"}}>📎 {entry.notes}</span>}
+            </div>
+          </div>
+
+          <div style={{fontSize:16,fontWeight:800,color:entry.amount>0?"#1a1a2e":"#d1d5db",flexShrink:0}}>
+            {fmtMoney(entry.amount)}
+          </div>
+        </div>
+      ))}
+      {items.length===0 && <div style={{padding:"32px 20px",textAlign:"center",color:"#d1d5db",fontSize:14}}>沒有項目</div>}
+    </div>
+  );
+}
+
+// ── Section with header ───────────────────────────────────────────
+function Section({label, color, items, onReorder, onEdit}) {
+  const total = items.filter(e=>e.paid&&e.amount>0).reduce((s,e)=>s+Number(e.amount),0);
+  return (
+    <div style={{marginBottom:0}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px 6px",background:"#f9fafb",borderTop:"1px solid #f0f0f0"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:color}}/>
+          <span style={{fontSize:12,fontWeight:700,color:"#6b7280",letterSpacing:"0.06em"}}>{label}</span>
+          <span style={{fontSize:11,background:"#f3f4f6",color:"#9ca3af",borderRadius:10,padding:"1px 7px",fontWeight:600}}>{items.length}</span>
+        </div>
+        {total>0&&<span style={{fontSize:12,fontWeight:700,color:"#374151"}}>${total.toLocaleString()}</span>}
+      </div>
+      <DraggableList items={items} onReorder={onReorder} onEdit={onEdit}/>
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────
+function App() {
+  const [entries,setEntries]=useState(()=>{
+    try{const s=localStorage.getItem("renovation-entries");return s?JSON.parse(s):initialData;}catch{return initialData;}
+  });
+  const [showAdd,setShowAdd]=useState(false);
+  const [editEntry,setEditEntry]=useState(null);
+  const [tab,setTab]=useState("全部");       // 全部 | 裝潢 | 家電
+  const [applianceTab,setApplianceTab]=useState("全部"); // 全部 | 已付款 | 未付款
+  const [syncStatus,setSyncStatus]=useState("loading");
+  const saveTimer=useRef(null);
+  const isFirstLoad=useRef(true);
+
+  // KV sync
+  useEffect(()=>{
+    fetch(API).then(r=>r.json()).then(({ok,entries:remote})=>{
+      if(ok&&remote&&remote.length>0){setEntries(remote);localStorage.setItem("renovation-entries",JSON.stringify(remote));}
+      else if(ok&&remote&&remote.length===0){saveToKV(entries);}
+      setSyncStatus("synced");
+    }).catch(()=>setSyncStatus("local")).finally(()=>{isFirstLoad.current=false;});
+  },[]);
+
+  function saveToKV(data){
+    setSyncStatus("syncing");
+    fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({entries:data})})
+      .then(r=>r.json()).then(({ok})=>setSyncStatus(ok?"synced":"error")).catch(()=>setSyncStatus("error"));
+  }
+  useEffect(()=>{
+    localStorage.setItem("renovation-entries",JSON.stringify(entries));
+    if(isFirstLoad.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(()=>saveToKV(entries),800);
+    return ()=>clearTimeout(saveTimer.current);
+  },[entries]);
+
+  const paidTotal = useMemo(()=>entries.filter(e=>e.paid&&e.amount>0).reduce((s,e)=>s+Number(e.amount),0),[entries]);
+  const unpaidCount = useMemo(()=>entries.filter(e=>!e.paid).length,[entries]);
+
+  // Reorder helpers — preserve global order within a filtered subset
+  function reorderSubset(newSubset) {
+    // replace items in their original positions with the reordered subset
+    const subIds = new Set(newSubset.map(e=>e.id));
+    const result = [...entries];
+    const positions = result.map((e,i)=>subIds.has(e.id)?i:null).filter(i=>i!==null);
+    positions.forEach((pos,i)=>{ result[pos]=newSubset[i]; });
+    setEntries(result);
+  }
+
+  const renovation = useMemo(()=>entries.filter(e=>e.type==="裝潢"),[entries]);
+  const appliance  = useMemo(()=>entries.filter(e=>e.type==="家電"),[entries]);
+  const appliancePaid   = useMemo(()=>appliance.filter(e=>e.paid),[appliance]);
+  const applianceUnpaid = useMemo(()=>appliance.filter(e=>!e.paid),[appliance]);
+
+  const handleAdd=(form)=>{
+    if(!form.item.trim()) return;
+    setEntries(prev=>[...prev,{...form,id:String(Date.now()),amount:Number(form.amount)||0}]);
+    setShowAdd(false);
+  };
+  const handleEdit=(form)=>{
+    setEntries(prev=>prev.map(e=>e.id===editEntry.id?{...e,...form,amount:Number(form.amount)||0}:e));
+    setEditEntry(null);
+  };
+  const handleDelete=(id)=>{setEntries(prev=>prev.filter(e=>e.id!==id));setEditEntry(null);};
+
+  const badge={
+    loading:{bg:"#f3f4f6",color:"#9ca3af",icon:"⟳",text:"載入中",spin:true},
+    local:  {bg:"#fef3c7",color:"#d97706",icon:"⚠",text:"本機"},
+    syncing:{bg:"#eff6ff",color:"#2563eb",icon:"⟳",text:"同步中",spin:true},
+    synced: {bg:"#f0fdf4",color:"#16a34a",icon:"✓",text:"已同步"},
+    error:  {bg:"#fef2f2",color:"#dc2626",icon:"!",text:"失敗"},
+  }[syncStatus];
+
+  const TABS = ["全部","裝潢","家電"];
+
+  return (
+    <div style={{minHeight:"100vh",background:"#f4f5f9"}}>
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%)",padding:"28px 20px 100px",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-40,right:-40,width:200,height:200,borderRadius:"50%",background:"rgba(37,99,235,0.15)"}}/>
+        <div style={{position:"relative",maxWidth:600,margin:"0 auto"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",letterSpacing:"0.12em"}}>新家裝潢費用紀錄</div>
+            <span style={{background:badge.bg,color:badge.color,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:20,display:"flex",alignItems:"center",gap:4}}>
+              <span className={badge.spin?"spin":""}>{badge.icon}</span>{badge.text}
+            </span>
+          </div>
+          <h1 style={{margin:"0 0 20px",fontSize:28,fontWeight:800,color:"#fff"}}>花費總覽</h1>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(10px)",borderRadius:16,padding:"16px 20px",border:"1px solid rgba(255,255,255,0.12)"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.55)",marginBottom:4}}>已付總金額</div>
+              <div style={{fontSize:22,fontWeight:800,color:"#fff"}}>${paidTotal.toLocaleString()}</div>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.1)",backdropFilter:"blur(10px)",borderRadius:16,padding:"16px 20px",border:"1px solid rgba(255,255,255,0.12)"}}>
+              <div style={{fontSize:11,color:"rgba(255,255,255,0.55)",marginBottom:4}}>未付款項目</div>
+              <div style={{fontSize:22,fontWeight:800,color:unpaidCount>0?"#fbbf24":"#34d399"}}>{unpaidCount} 項</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Card */}
+      <div style={{maxWidth:600,margin:"-60px auto 0",padding:"0 16px 100px",position:"relative"}}>
+        <div style={{background:"#fff",borderRadius:"20px",boxShadow:"0 8px 32px rgba(0,0,0,0.10)",overflow:"hidden"}}>
+
+          {/* Main tabs */}
+          <div style={{padding:"14px 16px 0",borderBottom:"1px solid #f3f4f6"}}>
+            <div style={{display:"flex",gap:6}}>
+              {TABS.map(t=>(
+                <button key={t} onClick={()=>{setTab(t);if(t!=="家電")setApplianceTab("全部");}} style={{padding:"8px 18px",borderRadius:"12px",border:"none",cursor:"pointer",fontSize:14,fontWeight:700,transition:"all 0.18s",background:tab===t?"#1a1a2e":"#f3f4f6",color:tab===t?"#fff":"#6b7280"}}>{t}</button>
+              ))}
+            </div>
+
+            {/* Sub tabs for 家電 */}
+            {tab==="家電" && (
+              <div style={{display:"flex",gap:6,marginTop:10,marginBottom:2}}>
+                {["全部","已付款","未付款"].map(st=>(
+                  <button key={st} className="sub-tab-btn" onClick={()=>setApplianceTab(st)}
+                    style={{background:applianceTab===st?"#2563eb":"#eff6ff",color:applianceTab===st?"#fff":"#2563eb"}}>
+                    {st}
+                    <span style={{marginLeft:5,opacity:0.7,fontWeight:400}}>
+                      {st==="全部"?appliance.length:st==="已付款"?appliancePaid.length:applianceUnpaid.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{height:10}}/>
+          </div>
+
+          {/* Content */}
+          <div>
+            {tab==="全部" && <>
+              <Section label="裝潢" color="#6b7280" items={renovation} onReorder={reorderSubset} onEdit={setEditEntry}/>
+              <Section label="家電" color="#2563eb" items={appliance}  onReorder={reorderSubset} onEdit={setEditEntry}/>
+            </>}
+
+            {tab==="裝潢" &&
+              <DraggableList items={renovation} onReorder={reorderSubset} onEdit={setEditEntry}/>
+            }
+
+            {tab==="家電" && applianceTab==="全部" &&
+              <DraggableList items={appliance} onReorder={reorderSubset} onEdit={setEditEntry}/>
+            }
+            {tab==="家電" && applianceTab==="已付款" && <>
+              <DraggableList items={appliancePaid} onReorder={reorderSubset} onEdit={setEditEntry}/>
+            </>}
+            {tab==="家電" && applianceTab==="未付款" && <>
+              <DraggableList items={applianceUnpaid} onReorder={reorderSubset} onEdit={setEditEntry}/>
+            </>}
+          </div>
+        </div>
+      </div>
+
+      {/* FAB */}
+      <button onClick={()=>setShowAdd(true)} style={{position:"fixed",bottom:32,right:"50%",transform:"translateX(50%)",background:"linear-gradient(135deg,#1a1a2e,#2563eb)",color:"#fff",border:"none",borderRadius:"50px",padding:"15px 32px",fontSize:15,fontWeight:700,cursor:"pointer",zIndex:100,boxShadow:"0 8px 24px rgba(37,99,235,0.4)",display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:18}}>＋</span> 新增項目
+      </button>
+
+      {showAdd&&<Modal title="新增費用項目" onClose={()=>setShowAdd(false)}><EntryForm onSave={handleAdd} onCancel={()=>setShowAdd(false)}/></Modal>}
+      {editEntry&&(
+        <Modal title="編輯項目" onClose={()=>setEditEntry(null)}>
+          <EntryForm initial={editEntry} onSave={handleEdit} onCancel={()=>setEditEntry(null)}/>
+          <button onClick={()=>handleDelete(editEntry.id)} style={{width:"100%",marginTop:10,padding:"12px",borderRadius:"12px",border:"1.5px solid #fee2e2",background:"#fff8f8",color:"#dc2626",fontSize:14,fontWeight:600,cursor:"pointer"}}>刪除此項目</button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
