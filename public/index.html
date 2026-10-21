@@ -27,15 +27,49 @@ var money=function(n){return '＄'+Number(n||0).toLocaleString('zh-TW')};
 var safe=function(x){return String(x==null?'':x).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
 function sync(t,bad){$('sync').textContent=t;$('sync').style.color=bad?'#ab4c39':'#3e7351';$('sync').style.background=bad?'#fff0eb':'#eff7f0'}
 function cache(){try{localStorage.setItem('renovation-entries',JSON.stringify(entries))}catch(e){}}
-async function load(){
-try{
-var res=await fetch('/api/data',{cache:'no-store'});if(!res.ok)throw Error('無法連線');var data=await res.json();
-if(!data.ok||!Array.isArray(data.entries))throw Error('資料格式異常');
-entries=data.entries;ready=true;cache();sync('✓ 已連線');render();
-}catch(e){
-try{var old=JSON.parse(localStorage.getItem('renovation-entries')||'null');if(Array.isArray(old)){entries=old;sync('離線檢視',true)}else sync('無法載入',true)}catch(_){sync('無法載入',true)}
-ready=false;render();
-}}
+var refreshing=null,lastRefresh=0,lastBackground=0;
+async function load(options){
+ options=options||{};
+ if(refreshing)return refreshing;
+ if(busy)return false;
+ refreshing=(async function(){
+  sync('同步中…');
+  try{
+   var res=await fetch('/api/data',{cache:'no-store',headers:{'Cache-Control':'no-cache'}});
+   if(!res.ok)throw Error('無法連線');
+   var data=await res.json();
+   if(!data.ok||!Array.isArray(data.entries))throw Error('資料格式異常');
+   entries=data.entries;ready=true;cache();lastRefresh=Date.now();sync('✓ 已同步');render();return true;
+  }catch(e){
+   if(!ready){
+    try{var old=JSON.parse(localStorage.getItem('renovation-entries')||'null');if(Array.isArray(old)){entries=old;sync('離線檢視',true)}else sync('無法載入',true)}catch(_){sync('無法載入',true)}
+    render();
+   }else sync('同步失敗',true);
+   return false;
+  }
+ })();
+ try{return await refreshing}finally{refreshing=null}
+}
+function canRefresh(){return !busy&&!document.querySelector('#modal .overlay')}
+function refreshOnResume(){
+ if(canRefresh()&&Date.now()-lastRefresh>3000)load();
+}
+document.addEventListener('visibilitychange',function(){
+ if(document.hidden)lastBackground=Date.now();
+ else refreshOnResume();
+});
+window.addEventListener('pageshow',function(e){if(e.persisted)refreshOnResume()});
+window.addEventListener('focus',function(){if(lastBackground&&Date.now()-lastBackground>1500)refreshOnResume()});
+var pullStart=null;
+document.addEventListener('touchstart',function(e){
+ if(window.scrollY<=4&&e.touches.length===1&&!document.querySelector('#modal .overlay'))pullStart=e.touches[0].clientY;
+},{passive:true});
+document.addEventListener('touchend',function(e){
+ if(pullStart===null)return;
+ var distance=e.changedTouches[0].clientY-pullStart;pullStart=null;
+ if(distance>90&&window.scrollY<=4&&canRefresh())load();
+},{passive:true});
+document.addEventListener('touchcancel',function(){pullStart=null},{passive:true});
 async function save(next){
 if(!ready||busy){alert('目前無法儲存，請確認雲端連線後重新整理。');return false}
 busy=true;sync('儲存中…');
