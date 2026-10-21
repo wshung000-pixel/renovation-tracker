@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>工程款匯入前檢查</title><style>body{margin:0;background:#f6f7f3;color:#26382d;font-family:-apple-system,"PingFang TC",sans-serif}.wrap{max-width:690px;margin:auto;padding:24px 18px}h1{font-size:25px}article{border:1px solid #e0e6dc;background:white;border-radius:18px;padding:18px;margin:15px 0}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:11px 5px;border-bottom:1px solid #e8ede7;text-align:left}td:last-child,th:last-child{text-align:right}.muted{color:#7a897d;font-size:13px;line-height:1.6}.warning{background:#fff4df;border-radius:12px;padding:14px;color:#95601e}button{border:0;background:#2b5740;color:#fff;border-radius:11px;padding:12px 18px;font-weight:700}.pill{display:inline-block;border-radius:22px;padding:7px 11px;background:#e9f2ea;font-size:12px}a{color:#315a40}</style></head><body><main class="wrap"><p class="muted"><a href="/">← 返回帳本</a></p><h1>工程約・前三期匯入檢查</h1><p class="pill">先檢查，確認後才匯入</p><article><h2>預計新增的六筆</h2><table><thead><tr><th>期數與性質</th><th>金額</th></tr></thead><tbody id="lines"></tbody></table><h3>合計 NT$1,439,807</h3><p class="muted">六筆皆標記為已付款。日期尚未提供，暫不填寫。第三期未稅款 420,207 元，包含追加 21,632 元。</p></article><article><h2>現有資料核對</h2><div id="check">正在檢查既有帳本…</div></article><article><button type="button" id="confirm" disabled>確認匯入六筆已付款工程款</button><p class="muted" id="message">檢查完成且沒有衝突後才會開放匯入。原工程約 $0 保留，不影響其他紀錄。</p></article></main><script>
+const lines=[['第一期・含稅',74150],['第一期・未稅',398575],['第二期・含稅',74150],['第二期・未稅',398575],['第三期・含稅',74150],['第三期・未稅（含追加）',420207]];
+const fmt=n=>'NT$'+n.toLocaleString('zh-TW');
+document.querySelector('#lines').innerHTML=lines.map(([a,b])=>'<tr><td>'+a+'</td><td>'+fmt(b)+'</td></tr>').join('');
+async function refresh(){
+ const target=document.querySelector('#check'),button=document.querySelector('#confirm');
+ button.disabled=true;target.textContent='正在檢查最新雲端資料…';
+ try{
+  const r=await fetch('/api/engineering-confirm',{cache:'no-store'}),d=await r.json();
+  if(!r.ok||!d.ok)throw Error(d.error||'讀取失敗');
+  if(d.conflicts.length){target.innerHTML='<div class="warning">暫停匯入：<ul>'+d.conflicts.map(x=>'<li>'+x.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</li>').join('')+'</ul></div>';return}
+  target.textContent='已有 '+d.already+' 筆，尚需新增 '+d.pending+' 筆。'+(d.pending?'匯入前會備份現有帳本。':'六筆都已存在，不需重複匯入。');
+  button.disabled=!d.pending;
+ }catch(e){target.textContent='檢查失敗：'+e.message+'。沒有修改資料。'}
+}
+document.querySelector('#confirm').onclick=async()=>{
+ if(!confirm('確定匯入工程約前三期六筆已付款紀錄？總金額 NT$1,439,807；原本 $0 工程約及其他紀錄保留。'))return;
+ const button=document.querySelector('#confirm');button.disabled=true;
+ try{
+  const r=await fetch('/api/engineering-confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'confirm-six-engineering-payments'})}),d=await r.json();
+  if(!r.ok||!d.ok)throw Error(d.error||'匯入失敗');
+  document.querySelector('#message').textContent='已完成，新增 '+d.added+' 筆、原有 '+d.already+' 筆。';
+  await refresh();
+ }catch(e){alert(e.message);await refresh()}
+};
+refresh();
+</script></body></html>
