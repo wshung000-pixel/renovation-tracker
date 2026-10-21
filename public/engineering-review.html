@@ -1,0 +1,27 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>工程款匯入核對</title><style>body{margin:0;background:#f7f7f3;color:#26382d;font-family:-apple-system,"PingFang TC",sans-serif}.wrap{max-width:670px;margin:auto;padding:24px 16px}h1{font-size:23px}article{background:white;border:1px solid #e4e9e1;border-radius:17px;padding:18px;margin:14px 0}table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:11px 3px;border-bottom:1px solid #edf0ec;text-align:left}td:last-child,th:last-child{text-align:right}.muted{font-size:13px;color:#7c8b7d;line-height:1.6}.warning{background:#fff3de;color:#8b5a1c;padding:12px;border-radius:10px}.good{background:#e7f2e9;color:#2b6840;padding:12px;border-radius:10px}a{color:#275c3c}.pill{background:#e9efe9;border-radius:40px;padding:7px 11px;font-size:12px;display:inline-block}</style></head><body><main class="wrap"><p><a href="/">← 返回裝潢帳本</a></p><h1>工程約前三期 · 匯入前核對</h1><p class="pill">唯讀 · 不修改任何資料</p><article><h2>六筆已付款款項</h2><table><thead><tr><th>款項</th><th>金額</th></tr></thead><tbody id="lines"></tbody></table><h3>總計 NT$1,439,807</h3><p class="muted">第一、二期未稅款各 398,575 元，第三期未稅款 420,207 元（含追加 21,632 元）。</p></article><article><h2>核對既有帳本</h2><div id="result" class="muted">正在讀取雲端紀錄…</div></article><p class="muted">這一頁只會檢查資料，不會進行匯入。待確認既有工程約金額仍為 0、沒有重複紀錄後，才會進行下一階段。</p></main><script>
+const rows=[['工程約－第一期含稅款',74150],['工程約－第一期未稅款',398575],['工程約－第二期含稅款',74150],['工程約－第二期未稅款',398575],['工程約－第三期含稅款',74150],['工程約－第三期未稅款',420207]];
+const money=n=>'NT$'+Number(n).toLocaleString('zh-TW');
+const esc=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+document.getElementById('lines').innerHTML=rows.map(r=>'<tr><td>'+r[0]+'</td><td>'+money(r[1])+'</td></tr>').join('');
+(async()=>{
+const out=document.getElementById('result');
+try{
+const res=await fetch('/api/data',{cache:'no-store'});const d=await res.json();
+if(!res.ok||!d.ok||!Array.isArray(d.entries))throw Error('無法取得帳本資料');
+const all=d.entries;
+const norm=x=>String(x||'').replace(/[\s－—–\-（）()]/g,'');
+const original=all.filter(x=>norm(x.item)==='工程約');
+const issues=[];
+if(original.length!==1||Number(original[0]?.amount)!==0)issues.push('原本的「工程約」不是唯一一筆金額為 NT$0 的項目');
+let existing=0;
+for(const row of rows){
+const match=all.filter(x=>norm(x.item)===norm(row[0]));
+if(match.length>1)issues.push(row[0]+' 有重複紀錄');
+else if(match.length===1){existing++;if(Number(match[0].amount)!==row[1]||match[0].paid!==true)issues.push(row[0]+' 金額或付款狀態不符');}
+}
+const others=all.filter(x=>String(x.item||'').includes('工程約')&&norm(x.item)!=='工程約'&&!rows.some(r=>norm(r[0])===norm(x.item)));
+if(others.length)issues.push('另有 '+others.length+' 筆其他工程約相關項目需要人工核對');
+out.innerHTML='<p>帳本共有 '+all.length+' 筆紀錄；六筆目標款項已有 '+existing+' 筆，尚缺 '+(6-existing)+' 筆。</p>'+(issues.length?'<div class="warning"><strong>發現需要核對的地方：</strong><ul>'+issues.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>':'<div class="good">沒有發現上述重複或金額衝突。這是唯讀核對結果，尚未執行匯入。</div>');
+}catch(e){out.innerHTML='<div class="warning">資料讀取失敗。請稍後再試；任何紀錄都沒有被修改。</div>'}
+})();
+</script></body></html>
