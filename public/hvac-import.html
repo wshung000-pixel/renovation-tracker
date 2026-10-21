@@ -1,0 +1,20 @@
+<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>冷氣及除濕機付款匯入</title><style>body{background:#f7f7f3;margin:0;font-family:-apple-system,"PingFang TC",sans-serif;color:#253c2d}.wrap{max-width:660px;margin:auto;padding:24px 16px}article{padding:20px;background:white;border:1px solid #e1e7de;border-radius:18px;margin:16px 0}h1{font-size:23px}table{width:100%;border-collapse:collapse}td{padding:15px 3px;border-bottom:1px solid #ebefeb}td:last-child{text-align:right;font-weight:bold}.hint{font-size:13px;color:#687e6a;line-height:1.65}.warn{color:#a15a1d;background:#fff2da;padding:14px;border-radius:12px}.ok{color:#2b7442;background:#e7f3e9;padding:14px;border-radius:12px}button{background:#234837;color:#fff;border:0;width:100%;border-radius:12px;padding:15px;font-weight:750;font-size:16px}button:disabled{opacity:.45}a{color:#2d6240}</style></head><body><main class="wrap"><a href="/">← 返回新家帳本</a><h1>冷氣＋除濕機・費用匯入</h1><article><h2>準備加入的兩筆紀錄</h2><table><tr><td>已付設備款</td><td>NT$240,000</td></tr><tr><td>未付安裝尾款</td><td>NT$117,810</td></tr></table><p><strong>總計 NT$357,810</strong></p><p class="hint">依 2026/07/28 世傳冷氣空調估價單。付款日期與方式暫不填寫。原本冷氣、除濕機項目先保留。</p></article><article><h2>匯入前安全檢查</h2><div id="check">讀取最新紀錄中…</div></article><article><button id="confirm" disabled>檢查中…</button><p id="message" class="hint">會先備份既有帳本，遇到可能重複的金額會停止匯入。請避免匯入時其他裝置同時編輯。</p></article></main><script>
+const button=document.getElementById('confirm'),check=document.getElementById('check'),message=document.getElementById('message');
+const esc=x=>String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+async function refresh(){
+button.disabled=true;check.textContent='讀取最新紀錄中…';
+try{let r=await fetch('/api/hvac-import',{cache:'no-store'}),d=await r.json();if(!r.ok||!d.ok)throw Error('核對失敗');
+if(d.conflicts.length){check.innerHTML='<div class="warn">發現可能重複的紀錄：<ul>'+d.conflicts.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>匯入已暫停，沒有修改資料。</div>';button.textContent='需要先核對';return}
+check.innerHTML='<div class="ok">尚缺 '+d.missing+' 筆，已存在 '+d.existing+' 筆；沒有發現金額衝突。</div><p class="hint">現有冷氣／除濕機原項目：'+d.placeholders.map(x=>esc(x.item)+' NT$'+x.amount.toLocaleString()).join('、')+'</p>';
+button.textContent=d.missing?'確認匯入缺少的 '+d.missing+' 筆':'兩筆已存在';button.disabled=d.missing===0;
+}catch(e){check.innerHTML='<div class="warn">無法讀取雲端資料，請稍後再試。</div>';button.textContent='檢查失敗';}
+}
+button.onclick=async()=>{
+if(!confirm('確認新增：已付款 NT$240,000、未付款 NT$117,810？系統會先備份，再加入缺少的項目。'))return;
+button.disabled=true;message.textContent='正在備份及匯入…';
+try{const r=await fetch('/api/hvac-import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'hvac-240000-117810-confirm'})}),d=await r.json();
+if(!r.ok||!d.ok)throw Error(d.error||'無法確認匯入');
+message.textContent='匯入完成：新增 '+d.added+' 筆，已存在 '+d.existing+' 筆。請返回帳本確認。';await refresh()
+}catch(e){message.textContent='匯入未確認成功：'+e.message+'。請重新檢查，勿連續點擊。';await refresh()}
+};refresh();
+</script></body></html>
